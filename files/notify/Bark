@@ -1,0 +1,40 @@
+#!/bin/sh
+# Copyright (C) 2023-2025 muink https://github.com/muink
+#
+# Port update notify script
+#
+# depends 
+
+. /usr/lib/natmap/common.sh
+. /usr/share/libubox/jshn.sh
+
+# http_request <data>
+http_request() {
+	local data="$1"
+	$CURL $retry -L -o /dev/null -X POST \
+		-H 'Content-Type: application/json' \
+		-d "$data" \
+		--url "https://${custom_domain:-api.day.app}/${KEY}"
+}
+
+start() {
+	local retry='--connect-timeout 3 --retry 5'
+	json_init
+	json_add_string body "${text}"
+	json_add_string copy "${ip}:${port}"
+	[ -n "${TITLE}" ] && json_add_string title "${TITLE}"
+	[ -n "${GROUP}" ] && json_add_string group "${GROUP}"
+	[ -n "${WACTION}" ] && json_add_string url "http${HTTPS:+s}://${ip}:${port}"
+	[ -n "${LEVEL}" ] && json_add_string level "${LEVEL}"
+
+	http_request "$(json_dump)"
+}
+
+
+# All external parameters required
+ALL_PARAMS="custom_domain text tokens"
+eval "$(JSON_EXPORT "$1")"; shift
+# All external tokens required
+INIT_GLOBAL_VAR KEY TITLE GROUP WACTION HTTPS LEVEL
+eval "$tokens"
+start "$@"

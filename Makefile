@@ -112,6 +112,14 @@ define Package/natmapt-client-script-deluge/install
 	$(call Package/natmapt-scripts/install/Default,$(1),client,Deluge)
 endef
 
+define Package/natmapt-notify-script-bark
+	$(call Package/natmapt-scripts/Default,notify,Bark)
+	DEPENDS+:=
+endef
+define Package/natmapt-notify-script-bark/install
+	$(call Package/natmapt-scripts/install/Default,$(1),notify,Bark)
+endef
+
 define Package/natmapt-notify-script-pushbullet
 	$(call Package/natmapt-scripts/Default,notify,Pushbullet)
 	DEPENDS+:=
@@ -139,6 +147,7 @@ endef
 $(eval $(call BuildPackage,natmapt))
 $(eval $(call BuildPackage,natmapt-client-script-transmission))
 $(eval $(call BuildPackage,natmapt-client-script-deluge))
+$(eval $(call BuildPackage,natmapt-notify-script-bark))
 $(eval $(call BuildPackage,natmapt-notify-script-pushbullet))
 $(eval $(call BuildPackage,natmapt-notify-script-pushover))
 $(eval $(call BuildPackage,natmapt-notify-script-telegram))

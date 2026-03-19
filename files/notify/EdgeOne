@@ -1,0 +1,80 @@
+#!/bin/sh
+# Copyright (C) 2023-2025 muink https://github.com/muink
+#
+# Port update notify script
+#
+# depends openssl-util
+
+. /usr/lib/natmap/common.sh
+. /usr/share/libubox/jshn.sh
+
+# http_request <data>
+http_request() {
+	local payload="$1"
+	local service="teo"
+	local version="2022-09-01"
+	local action="ModifyAccelerationDomain"
+	local host="${custom_domain:-teo.tencentcloudapi.com}"
+	
+	local timestamp=$(date +%s)
+	local date=$(date -u -d @$timestamp +"%Y-%m-%d")
+
+	local payload_hash=$(printf "%s" "$payload" | sha256sum | awk '{print $1}')
+
+	local lower_action=$(printf '%s' "$action" | tr 'A-Z' 'a-z')
+	local canonical_headers=$(printf "content-type:application/json\nhost:%s\nx-tc-action:%s\n" "$host" "$lower_action")
+	local signed_headers="content-type;host;x-tc-action"
+	local canonical_req=$(printf "POST\n/\n\n%b\n\n%s\n%s" "$canonical_headers" "$signed_headers" "$payload_hash")
+
+	local canonical_req_hash=$(printf "%s" "$canonical_req" | sha256sum | awk '{print $1}')
+	local string_to_sign=$(printf "TC3-HMAC-SHA256\n%s\n%s/%s/tc3_request\n%s" "$timestamp" "$date" "$service" "$canonical_req_hash")
+
+	local kDate=$(printf "%s" "$date" | openssl dgst -sha256 -mac HMAC -macopt "key:TC3$SECRET_KEY" -hex | sed 's/^.* //')
+	local kService=$(printf "%s" "$service" | openssl dgst -sha256 -mac HMAC -macopt "hexkey:$kDate" -hex | sed 's/^.* //')
+	local kSigning=$(printf "tc3_request" | openssl dgst -sha256 -mac HMAC -macopt "hexkey:$kService" -hex | sed 's/^.* //')
+	local signature=$(printf "%s" "$string_to_sign" | openssl dgst -sha256 -mac HMAC -macopt "hexkey:$kSigning" -hex | sed 's/^.* //')
+
+	local auth="TC3-HMAC-SHA256 Credential=$SECRET_ID/$date/$service/tc3_request, SignedHeaders=content-type;host;x-tc-action, Signature=$signature"
+
+	$CURL $retry -L -o /dev/null -X POST \
+		"https://${host}" \
+		-H "Authorization: $auth" \
+		-H "Content-Type: application/json" \
+		-H "X-TC-Action: $action" \
+		-H "X-TC-Timestamp: $timestamp" \
+		-H "X-TC-Version: $version" \
+		-d "$payload"
+}
+
+start() {
+	local retry='--connect-timeout 3 --retry 5'
+	json_init
+	
+	json_add_string ZoneId "${ZONE_ID}"
+	json_add_string DomainName "${DOMAIN_NAME}"
+	
+	json_add_object OriginInfo
+		json_add_string OriginType IP_DOMAIN
+		json_add_string Origin "${ip}"
+		[ -n "${ORIGIN_HOST}" ] && json_add_string HostHeader "${ORIGIN_HOST}"
+	json_close_object
+
+	if [ -n "${HTTPS}" ]; then
+		json_add_string OriginProtocol HTTPS
+		json_add_int HttpsOriginPort "${port}"
+	else
+		json_add_string OriginProtocol HTTP
+		json_add_int HttpOriginPort "${port}"
+	fi
+
+	http_request "$(json_dump)"
+}
+
+
+# All external parameters required
+ALL_PARAMS="custom_domain text tokens"
+eval "$(JSON_EXPORT "$1")"; shift
+# All external tokens required
+INIT_GLOBAL_VAR SECRET_ID SECRET_KEY ZONE_ID DOMAIN_NAME ORIGIN_HOST HTTPS
+eval "$tokens"
+start "$@"
